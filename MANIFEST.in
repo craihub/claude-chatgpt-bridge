@@ -5,4 +5,5 @@ recursive-include src *.py
 recursive-include tests *.py
 recursive-include scripts *.py
 recursive-include .github *.yml
+recursive-include docs *.png
 global-exclude *.pyc *.key *.pem *.jsonl *.log

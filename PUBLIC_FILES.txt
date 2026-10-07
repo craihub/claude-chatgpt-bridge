@@ -10,6 +10,7 @@ MANIFEST.in
 PUBLIC_FILES.txt
 README.md
 SECURITY.md
+docs/images/desktop-chatgpt-models.png
 install.py
 pyproject.toml
 scripts/build_release.py

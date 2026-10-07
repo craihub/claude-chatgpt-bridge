@@ -6,6 +6,12 @@ Experimental and unofficial. Linux bridge tests run locally; Windows/macOS imple
 
 The bridge translates Anthropic Messages requests into Responses API requests, streams the results back to Claude Code, and keeps OAuth credentials on your machine. Claude Code executes your local tools with its normal permission controls.
 
+## Desktop preview
+
+![Claude Desktop model picker with Sol 6.1 · ChatGPT selected and other ChatGPT options listed](docs/images/desktop-chatgpt-models.png)
+
+Screenshot from an existing customized local desktop setup, cropped to remove personal usage details. This shows ChatGPT options in its model picker; the repository installer uses the separate gateway configuration described below and does not reproduce this combined provider menu. Available models and labels depend on your account and client version.
+
 ## What it provides
 
 - Browser sign-in, PKCE, ID-token validation, and access-token refresh.
