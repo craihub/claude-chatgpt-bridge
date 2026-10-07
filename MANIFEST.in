@@ -1,0 +1,7 @@
+include README.md LICENSE SECURITY.md CONTRIBUTING.md COMPATIBILITY.md
+include PUBLIC_FILES.txt pyproject.toml .gitignore .gitattributes
+recursive-include src *.py
+recursive-include tests *.py
+recursive-include scripts *.py
+recursive-include .github *.yml
+global-exclude *.pyc *.key *.pem *.jsonl *.log
