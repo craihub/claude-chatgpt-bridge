@@ -53,7 +53,9 @@ class StateTests(unittest.TestCase):
                 state.initialize(target)
 
     def test_xdg_and_override(self):
-        with patch('claude_chatgpt_bridge.platforms.platform_name', return_value='linux'), patch.dict(os.environ, {'XDG_STATE_HOME': '/tmp/synthetic-state'}, clear=True):
+        with patch('claude_chatgpt_bridge.platforms.platform_name', return_value='linux'), \
+             patch('claude_chatgpt_bridge.platforms.Path.home', return_value=Path('/tmp/synthetic-home')), \
+             patch.dict(os.environ, {'XDG_STATE_HOME': '/tmp/synthetic-state'}, clear=True):
             self.assertEqual(state.default_directory(), Path('/tmp/synthetic-state/claude-chatgpt-bridge'))
         with patch.dict(os.environ, {'CLAUDE_CHATGPT_STATE_DIR': '/tmp/synthetic-override'}):
             self.assertEqual(state.default_directory(), Path('/tmp/synthetic-override'))

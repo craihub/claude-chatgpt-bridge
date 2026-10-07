@@ -36,15 +36,21 @@ def is_link(path):
     return False
 
 
-def windows_identity():
+def windows_token_sid(information):
     import win32api
     import win32con
     import win32security
     token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
     try:
-        return win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+        value = win32security.GetTokenInformation(token, information)
+        return value[0] if information == win32security.TokenUser else value
     finally:
         token.Close()
+
+
+def windows_identity():
+    import win32security
+    return windows_token_sid(win32security.TokenUser)
 
 
 def protect_windows(path):
@@ -66,14 +72,21 @@ def check_windows_private(path):
     descriptor = security.GetNamedSecurityInfo(str(path), security.SE_FILE_OBJECT,
         security.OWNER_SECURITY_INFORMATION | security.DACL_SECURITY_INFORMATION)
     user = windows_identity()
-    if descriptor.GetSecurityDescriptorOwner() != user:
+    administrators = security.CreateWellKnownSid(security.WinBuiltinAdministratorsSid, None)
+    owner = descriptor.GetSecurityDescriptorOwner()
+    # Elevated Windows processes may create files owned by Administrators.
+    # Accept that only when it is this process token's default owner; the
+    # restrictive DACL and explicit current-user grant are still required.
+    administrative_owner = (owner == administrators
+        and windows_token_sid(security.TokenOwner) == administrators)
+    if owner != user and not administrative_owner:
         raise ValueError('Runtime storage must belong to the current user.')
     acl = descriptor.GetSecurityDescriptorDacl()
     if acl is None:
         raise ValueError('Runtime storage must have a private Windows ACL.')
     allowed = {security.ConvertSidToStringSid(user),
                security.ConvertSidToStringSid(security.CreateWellKnownSid(security.WinLocalSystemSid, None)),
-               security.ConvertSidToStringSid(security.CreateWellKnownSid(security.WinBuiltinAdministratorsSid, None))}
+               security.ConvertSidToStringSid(administrators)}
     user_allowed = False
     for index in range(acl.GetAceCount()):
         ace = acl.GetAce(index)

@@ -310,6 +310,17 @@ class WindowsStorageTests(unittest.TestCase):
             platforms.check_windows_private(directory)
             platforms.check_windows_private(directory / 'bridge.key')
             import win32security as security
+            from unittest.mock import Mock
+            foreign = Mock()
+            foreign.GetSecurityDescriptorOwner.return_value = security.CreateWellKnownSid(security.WinWorldSid, None)
+            with patch.object(security, 'GetNamedSecurityInfo', return_value=foreign):
+                with self.assertRaises(ValueError):
+                    platforms.check_windows_private(directory)
+            foreign.GetSecurityDescriptorOwner.return_value = security.CreateWellKnownSid(security.WinBuiltinAdministratorsSid, None)
+            with patch.object(security, 'GetNamedSecurityInfo', return_value=foreign), \
+                 patch.object(platforms, 'windows_token_sid', return_value=platforms.windows_identity()):
+                with self.assertRaises(ValueError):
+                    platforms.check_windows_private(directory)
             descriptor = security.GetNamedSecurityInfo(str(directory), security.SE_FILE_OBJECT,
                                                       security.DACL_SECURITY_INFORMATION)
             acl = descriptor.GetSecurityDescriptorDacl()

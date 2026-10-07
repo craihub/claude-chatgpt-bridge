@@ -8,6 +8,8 @@ Each user signs in through OpenAI's authorization page. The bridge validates OAu
 
 OAuth tokens, email/subject, registration IDs, host ID, and the local API key remain in a dedicated owner-only state directory. Tokens are stored as private files, not encrypted by an OS keychain. Full-disk encryption protects data at rest when the machine is locked down. Your user account can read these files. Protect local backups accordingly.
 
+Windows state requires ownership by the current user. When Windows assigns the Administrators group as this process token's default owner, that owner is also accepted. This does not add access: ACL checks still reject grants outside the current user, SYSTEM and Administrators, and require an explicit current-user grant. Ordinary installation does not require elevation.
+
 Only a registration ID and host ID are retained after an incomplete registration; authorization codes, PKCE verifiers, and unvalidated token responses are not saved for troubleshooting. The callback listener uses loopback and does not write HTTP access logs. Status output omits identities by default. The explicit `accounts --show-identity` command displays email addresses locally.
 
 Desktop setup generates a distinct local gateway key. Its private import JSON contains that key, never OpenAI tokens. Import by file path without printing the contents. The desktop app necessarily stores its gateway configuration under its own security policy. Previous configuration exports may contain other providers' credentials: keep them in private local storage and never attach them to a chat or issue. The installer preserves an exact backup and refuses to overwrite it with different content.
