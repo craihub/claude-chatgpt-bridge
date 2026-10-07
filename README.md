@@ -4,9 +4,11 @@ Use your own ChatGPT plan in Claude Code through a local adapter for OpenAI's of
 
 Experimental and unofficial. Linux bridge tests run locally; Windows/macOS implementations and desktop onboarding still need native end-to-end validation. This project is not affiliated with or endorsed by OpenAI or Anthropic. Use your existing Claude installation; no proprietary client code or prompts are distributed here.
 
+**Desktop scope:** this installer creates a separate ChatGPT gateway configuration. It does not add OpenAI models alongside Claude models in an existing provider's dropdown. Switch desktop configurations to return to your original provider.
+
 The bridge translates Anthropic Messages requests into Responses API requests, streams the results back to Claude Code, and keeps OAuth credentials on your machine. Claude Code executes your local tools with its normal permission controls.
 
-## Desktop preview
+## Reference screenshot: customized installation
 
 ![Claude Desktop overview and open model picker with Sol 6.1 · ChatGPT selected](docs/images/desktop-chatgpt-models.png)
 
@@ -18,7 +20,8 @@ Full screenshot from an existing customized local desktop setup. This shows Chat
 - Account-specific model discovery, text, supported images/documents, and function tools.
 - Streaming responses and preservation of tool-call history and opaque reasoning records.
 - Stable conversation prefixes and local token/cache accounting. Cache hits and savings are not guaranteed.
-- Automatic waiting after a subscription quota error, with five-minute minimum intervals and longer provider cooldowns respected. Checks stop when the waiting request disconnects. Requests that already produced output or tool activity are never automatically replayed.
+- MCP tool search enabled by default in the terminal launcher and generated desktop configuration, so supported clients can load schemas on demand. Explicit opt-outs and managed restrictions still apply.
+- Automatic quota rechecks while the client remains connected, at least five minutes apart and respecting longer provider cooldowns. Client timeouts can end the wait before allowance resets. Requests that already produced output or tool activity are never automatically replayed.
 - Resumable desktop setup, private gateway configuration, per-user background startup, verification and guarded undo.
 - A separate process-scoped terminal launcher that keeps persistent Claude settings unchanged.
 
@@ -76,6 +79,8 @@ claude-chatgpt run --model chatgpt.MODEL_FROM_YOUR_LIST
 
 The placeholder must be replaced with an available model. You can pass Claude options after `--`, for example `-- --continue`. The launcher selects manual tool approvals; it does not disable safety checks.
 
+The launcher defaults `ENABLE_TOOL_SEARCH` to `true` for this adapter, which supports Claude's local ToolSearch. Existing environment values, including `false` and `auto:5`, are preserved. Managed tool permissions and experimental-beta restrictions still take precedence. To opt out for one terminal launch, use `ENABLE_TOOL_SEARCH=false claude-chatgpt run --model chatgpt.MODEL_FROM_YOUR_LIST` in a POSIX shell, or set that environment variable for the process on Windows. Desktop setup has its own `--no-tool-search` option; see [desktop setup](DESKTOP_SETUP.md).
+
 `serve` stays in the foreground. Stop it with Ctrl+C. After refreshing the model list or switching accounts, restart it. Run `claude` normally for your usual provider configuration.
 
 ## State and privacy
@@ -102,7 +107,9 @@ claude-chatgpt logout                # Deselect account; stop/restart serve
 
 Logout deselects the account locally; it does not revoke saved refresh tokens. Revoke the app's access in ChatGPT to end the authorization. Keep the host identifier stable if you intend to reconnect the same installation.
 
-Normally quota recovery is automatic while a request remains connected. If the client already displayed an error, retry it once to attach a waiting request. `claude-chatgpt resume` clears local cooldown without making inference; use it only after a known reset. Usage totals are not your account's billing statement or remaining allowance percentage.
+Quota recovery is automatic only while a request remains connected. SSE keep-alives do not remove Claude Desktop's finite idle timeout, so this does not guarantee waiting through a five-hour allowance reset. If the client times out, the pending request is discarded and rechecks stop. Wait for allowance to return, then retry once in the client; the saved provider cooldown is still honored. Do not leave repeated manual retries running. `claude-chatgpt resume` clears local cooldown without making inference; use it only after a known reset. Usage totals are not your account's billing statement or remaining allowance percentage.
+
+For desktop upgrades, update the checkout and rerun `python3 install.py continue` (Windows: `py -3 install.py continue`). Changes to bridge Python code, the account or the generated configuration invalidate saved desktop verification. Follow the returned steps and verify the new marker in the actual Code tab. An unchanged resume retains a current verification. This release enables desktop tool search, so upgrading from an older default configuration requires reimporting the generated JSON.
 
 ## Remove
 

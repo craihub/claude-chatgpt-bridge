@@ -257,6 +257,42 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assert_success(text)
         self.assertEqual(len(self.requests), 1)
 
+    async def test_deferred_mcp_schema_loads_after_discovery_without_changing_prefix(self):
+        tools = [
+            {'name': 'ToolSearch', 'input_schema': {'type': 'object',
+                'properties': {'query': {'type': 'string'}}}},
+            {'name': 'mcp__blender__animate', 'defer_loading': True,
+             'description': 'Synthetic animation tool', 'input_schema': {'type': 'object'}},
+            {'name': 'mcp__browser__screenshot', 'defer_loading': True,
+             'description': 'Synthetic screenshot tool', 'input_schema': {'type': 'object'}},
+        ]
+        payload = {**PAYLOAD, 'stream': False, 'tools': tools}
+        call = {'type': 'function_call', 'call_id': 'call_search', 'name': 'ToolSearch',
+                'arguments': '{"query":"select:mcp__blender__animate"}'}
+        response = complete()
+        response['response']['output'] = [call]
+        self.actions.append([created(), response])
+        reply, text = await self.send(payload)
+        self.assertEqual(reply.status, 200)
+        assistant = json.loads(text)
+        self.assertEqual(assistant['stop_reason'], 'tool_use')
+        payload['messages'] = [*payload['messages'],
+            {'role': 'assistant', 'content': assistant['content']},
+            {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'call_search',
+                'content': [{'type': 'tool_reference', 'tool_name': 'mcp__blender__animate'}]}]}]
+        reply, _ = await self.send(payload)
+        self.assertEqual(reply.status, 200)
+        first, second = self.requests
+        def schemas(request):
+            return [tool['name'] for item in request['input']
+                    if item.get('type') == 'additional_tools' for tool in item['tools']]
+        self.assertEqual(schemas(first), ['ToolSearch'])
+        self.assertEqual(schemas(second), ['ToolSearch', 'mcp__blender__animate'])
+        self.assertEqual(second['input'][:len(first['input'])], first['input'])
+        self.assertIn(call, second['input'])
+        self.assertEqual(second['input'][-2]['type'], 'function_call_output')
+        self.assertEqual(second['input'][-1]['type'], 'additional_tools')
+
     async def test_stale_success_cannot_clear_new_pause(self):
         self.pause_old()
         async def newer_limit(request):

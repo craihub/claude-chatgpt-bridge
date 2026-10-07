@@ -103,6 +103,7 @@ def main():
     parser.add_argument('--model')
     parser.add_argument('--no-login', action='store_true')
     parser.add_argument('--previous-config', type=Path)
+    parser.add_argument('--tool-search', action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--desktop-restored', action='store_true')
     args = parser.parse_args()
     try:
@@ -124,6 +125,8 @@ def main():
                 command += ['--no-login']
             if args.previous_config:
                 command += ['--previous-config', str(args.previous_config.expanduser().absolute())]
+            if args.tool_search is not None:
+                command.append('--tool-search' if args.tool_search else '--no-tool-search')
         if args.action == 'undo' and args.desktop_restored:
             command.append('--desktop-restored')
         raise SystemExit(subprocess.call(command, cwd=runtime, env=python_environment()))

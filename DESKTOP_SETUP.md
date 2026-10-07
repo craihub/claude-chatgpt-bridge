@@ -20,17 +20,23 @@ From the repository, use Python 3.11+:
 
 `setup --no-login` prepares the runtime without opening sign-in. `setup --model chatgpt.EXACT_ID` chooses a model from the authorized account; otherwise account catalog order determines the default. `--previous-config PATH` saves a private byte-for-byte backup of an existing app-exported JSON configuration. `--state-dir PATH` uses a dedicated private location outside Git. Repeat the same override on later commands.
 
+MCP tool search defaults on in the generated configuration. `setup --no-tool-search` (also accepted by `continue`) disables it and preserves that preference across resumes; `--tool-search` enables it again. Changing the preference requires reimport and renewed desktop verification. Respect existing user/admin restrictions when selecting it; do not override managed policies.
+
 Exit 0 means verified/undone, 2 means a next step is pending, and 1 means an error. `doctor` checks local HTTP endpoints and saved verification without sending inference. OAuth login and model discovery contact OpenAI. Verification uses one short prompt sent by the agent from a new empty desktop Code conversation; normal plan limits apply.
 
 ## Desktop import
 
-The setup JSON points to `desktop-import.json`. This private file uses documented third-party configuration keys: gateway provider, static local key, bearer authentication, loopback URL, explicit account model IDs and medium default effort. It does not contain OpenAI tokens. Models are explicitly labeled ChatGPT and are not disguised as Claude models. HTTP loopback acceptance and custom model support must be verified on the installed app version.
+The setup JSON points to `desktop-import.json`. This private file uses documented third-party configuration keys: gateway provider, static local key, bearer authentication, loopback URL, explicit account model IDs, medium default effort and `toolSearchEnabled`. It does not contain OpenAI tokens. Models are explicitly labeled ChatGPT and are not disguised as Claude models. HTTP loopback acceptance, custom model support and tool deferral must be verified on the installed app version. Older clients can attach additional experimental features when tool search is enabled; see [compatibility](COMPATIBILITY.md).
 
 Open **Help → Troubleshooting → Enable Developer Mode**, then **Developer → Configure Third-Party Inference**. Preserve the original named configuration or standard sign-in mode, create a separate **Claude ChatGPT Bridge** configuration, use **Import configuration** for the generated file, and apply/restart. A managed, read-only configuration must be handled by the administrator.
 
 This gateway becomes the selected desktop inference configuration; it is not a patch that mixes providers into the existing configuration. Code is the supported target. Chat/Cowork may share the setting and are not validated by this project. Unsupported tools fail explicitly. Return to the previous configuration whenever needed.
 
 Once the agent has sent `verification_prompt` from the desktop and observed the exact response, `doctor` must report `desktop_verified: true`. Success records only a random synthetic marker and timestamps, not conversation contents. A server health check alone is insufficient.
+
+That status verifies the short routing check for the saved account, generated configuration and bridge Python code fingerprint. It does not certify tools, images, compaction, long quota waits, or every model in the picker. Test those separately in the intended workload before claiming support. A changed code fingerprint invalidates old verification even if the model list and import JSON are unchanged; an unchanged resume retains it for up to seven days.
+
+If quota is exhausted, the bridge waits only while the desktop request stays connected. Desktop's finite idle timeout still applies despite keep-alives. Wait for allowance and retry once after a timeout; the bridge does not keep the prompt or poll in the background after disconnection. Do not promise unattended recovery through an entire subscription reset window.
 
 ## Storage and startup
 

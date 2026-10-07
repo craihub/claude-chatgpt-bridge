@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from claude_chatgpt_bridge import auth, desktop, platforms, service, state
+from claude_chatgpt_bridge import auth, cli, desktop, platforms, service, state
 import test_recovery as recovery
 
 
@@ -21,12 +21,13 @@ def synthetic_verification(directory, model='chatgpt.synthetic-model'):
                              'scopes': ['chatgpt.tokens.use.direct']}}})
     config = {'inferenceProvider': 'gateway', 'synthetic': True}
     auth.atomic_json(directory / 'desktop-import.json', config)
-    auth.atomic_json(directory / 'desktop-setup.json', {'model': model, 'port': 12345,
+    runtime = desktop.runtime_fingerprint()
+    auth.atomic_json(directory / 'desktop-setup.json', {'model': model, 'port': 12345, 'runtime': runtime,
                                                        'phase': 'awaiting_desktop_import'})
     check = {'model': model, 'marker': 'BRIDGE_SETUP_synthetic_marker', 'created_at': time.time(),
              'account': hashlib.sha256(b'synthetic-client').hexdigest(),
              'config': hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest(),
-             'completed': False}
+             'runtime': runtime, 'completed': False}
     auth.atomic_json(directory / 'desktop-check.json', check)
     return check
 
@@ -64,6 +65,10 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(config['inferenceModels'][0]['name'], 'chatgpt.other-model')
         self.assertEqual(config['inferenceGatewayBaseUrl'], 'http://127.0.0.1:12345')
         self.assertEqual(config['inferenceCredentialKind'], 'static')
+        self.assertIs(config['toolSearchEnabled'], True)
+        disabled = desktop.make_config(models, 'synthetic-local-credential', 12345,
+                                       'chatgpt.other-model', tool_search=False)
+        self.assertIs(disabled['toolSearchEnabled'], False)
         self.assertNotIn('inferenceCustomHeaders', config)
         self.assertNotIn('inferenceBedrockProfile', config)
         self.assertNotIn('anthropicFamilyTier', json.dumps(config))
@@ -150,11 +155,25 @@ class SetupTests(unittest.IsolatedAsyncioTestCase):
                  patch.object(service, 'status', return_value={'installed': True, 'running': True}):
                 self.assertTrue((await desktop.doctor(directory))['desktop_verified'])
                 for field, value in [('created_at', time.time() - 8 * 86400),
-                                     ('account', 'another-account'), ('config', 'another-config')]:
+                                     ('account', 'another-account'), ('config', 'another-config'),
+                                     ('runtime', None), ('runtime', 'previous-runtime')]:
                     auth.atomic_json(directory / 'desktop-check.json', {**check, field: value})
                     result = await desktop.doctor(directory)
                     self.assertFalse(result['desktop_verified'])
                     self.assertNotIn('verification_prompt', result)
+                auth.atomic_json(directory / 'desktop-check.json', check)
+                with patch.object(desktop, 'runtime_fingerprint', return_value='updated-code'):
+                    self.assertFalse((await desktop.doctor(directory))['desktop_verified'])
+
+    async def test_changed_runtime_cannot_complete_an_old_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = state.initialize(Path(tmp) / 'state')
+            check = synthetic_verification(directory)
+            with patch.object(desktop, 'runtime_fingerprint', return_value='updated-code'):
+                desktop.observe_completion(directory,
+                    {'messages': [{'role': 'user', 'content': check['marker']}]},
+                    check['model'], [{'type': 'text', 'text': check['marker']}])
+            self.assertFalse(json.loads((directory / 'desktop-check.json').read_text())['completed'])
 
     async def test_no_login_returns_pending_without_service_or_network(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,6 +211,30 @@ class SetupTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(install.call_args_list[1].kwargs['restart'])
                 self.assertNotIn('synthetic-token', json.dumps(first))
                 self.assertNotIn(original.decode().strip(), json.dumps(first))
+
+                check_path = directory / 'desktop-check.json'
+                check = json.loads(check_path.read_text())
+                check['completed'] = True
+                auth.atomic_json(check_path, check)
+                self.assertTrue((await desktop.setup(directory))['desktop_verified'])
+                self.assertFalse(install.call_args.kwargs['restart'])
+
+                with patch.object(desktop, 'runtime_fingerprint', return_value='updated-code'):
+                    updated = await desktop.setup(directory)
+                    self.assertTrue(install.call_args.kwargs['restart'])
+                    self.assertFalse(updated['desktop_verified'])
+                    self.assertNotEqual(updated['verification_prompt'], first['verification_prompt'])
+                    self.assertFalse(json.loads(check_path.read_text())['completed'])
+                    self.assertEqual(json.loads(check_path.read_text())['runtime'], 'updated-code')
+
+                disabled = await desktop.setup(directory, tool_search=False)
+                config_path = directory / 'desktop-import.json'
+                self.assertIs(json.loads(config_path.read_text())['toolSearchEnabled'], False)
+                self.assertFalse(disabled['desktop_verified'])
+                await desktop.setup(directory)
+                self.assertIs(json.loads(config_path.read_text())['toolSearchEnabled'], False)
+                await desktop.setup(directory, tool_search=True)
+                self.assertIs(json.loads(config_path.read_text())['toolSearchEnabled'], True)
 
 
 class DesktopProtocolTests(unittest.IsolatedAsyncioTestCase):
@@ -265,6 +308,20 @@ class BootstrapTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('bridge_bootstrap', Path(__file__).parents[1] / 'install.py')
         self.bootstrap = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.bootstrap)
+
+    def test_desktop_tool_search_option_reaches_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for option, value in (('--no-tool-search', False), ('--tool-search', True)):
+                parsed = cli.parser().parse_args(['desktop', 'setup', option])
+                self.assertIs(parsed.tool_search, value)
+                with patch.object(self.bootstrap, 'runtime_path', return_value=Path(tmp)), \
+                     patch.object(self.bootstrap, 'install', return_value=Path(tmp) / 'python'), \
+                     patch.object(self.bootstrap.subprocess, 'call', return_value=2) as call, \
+                     patch.object(self.bootstrap.sys, 'argv', ['install.py', 'continue', option]):
+                    with self.assertRaises(SystemExit) as stopped:
+                        self.bootstrap.main()
+                    self.assertEqual(stopped.exception.code, 2)
+                    self.assertEqual(call.call_args.args[0][-3:], ['desktop', 'setup', option])
 
     @unittest.skipIf(os.name == 'nt', 'POSIX permissions and links')
     def test_unsafe_runtime_is_refused_without_installing(self):

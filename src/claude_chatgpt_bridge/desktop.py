@@ -25,14 +25,22 @@ def read_record(directory):
     return json.loads(path.read_text()) if path.exists() else {}
 
 
+def runtime_fingerprint():
+    digest = hashlib.sha256()
+    for path in sorted(Path(__file__).parent.glob('*.py')):
+        digest.update(path.name.encode() + b'\0' + path.read_bytes() + b'\0')
+    return digest.hexdigest()
+
+
 def check_current(directory, check, record):
-    """A saved response verifies only its original account/config and time window."""
+    """A saved response verifies its original account, config, code and age."""
     try:
         _, account = Auth(directory).selected()
         config = json.loads((directory / 'desktop-import.json').read_text())
         return (bool(check.get('marker')) and check.get('model') == record.get('model')
                 and check.get('account') == hashlib.sha256(account['client_id'].encode()).hexdigest()
                 and check.get('config') == hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+                and check.get('runtime') == record.get('runtime') == runtime_fingerprint()
                 and 0 <= time.time() - check.get('created_at', 0) <= 7 * 86400)
     except (OSError, ValueError, RuntimeError, KeyError, TypeError):
         return False
@@ -49,7 +57,7 @@ def pick_port(preferred=11438):
                     raise
 
 
-def make_config(models, key, port, selected):
+def make_config(models, key, port, selected, *, tool_search=True):
     aliases = {'chatgpt.' + m['slug']: m for m in models}
     if selected not in aliases:
         raise ValueError('The selected model is not available for this account. Run models to list choices.')
@@ -59,7 +67,7 @@ def make_config(models, key, port, selected):
             'inferenceGatewayApiKey': key, 'inferenceGatewayAuthScheme': 'bearer',
             'inferenceModels': [{'name': m, 'labelOverride': aliases[m]['display_name'] + ' · ChatGPT'}
                                 for m in ordered],
-            'defaultModelEffort': 'medium'}
+            'defaultModelEffort': 'medium', 'toolSearchEnabled': tool_search}
 
 
 async def probe(directory, port, *, desktop=False):
@@ -106,12 +114,16 @@ def backup_previous(directory, source):
     return str(target)
 
 
-async def setup(directory, *, model=None, no_login=False, previous_config=None, preferred_port=11438):
+async def setup(directory, *, model=None, no_login=False, previous_config=None, preferred_port=11438,
+                tool_search=None):
     directory = initialize(directory)
     async with file_lock(directory / 'desktop-install.lock'):
         record = read_record(directory)
         if record.get('undone'):
             record = {}
+        if tool_search is not None:
+            record['tool_search'] = tool_search
+        record.setdefault('tool_search', True)
         backup = backup_previous(directory, previous_config)
         if backup:
             record['previous_config'] = backup
@@ -146,20 +158,21 @@ async def setup(directory, *, model=None, no_login=False, previous_config=None, 
         key = key_path.read_text().strip()
         if len(key) < 32:
             raise ValueError('Desktop credential is invalid; do not apply its configuration.')
-        config = make_config(models, key, record['port'], selected)
+        config = make_config(models, key, record['port'], selected, tool_search=record['tool_search'])
         atomic_json(directory / 'desktop-import.json', config)
         # Carry successful verification through a no-op resume only.
         check_path = directory / 'desktop-check.json'
         old_check = json.loads(check_path.read_text()) if check_path.exists() else {}
         config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+        runtime_hash = runtime_fingerprint()
         if (old_check.get('model') != selected or not old_check.get('marker')
                 or old_check.get('account') != account_hash
                 or old_check.get('config') != config_hash
+                or old_check.get('runtime') != runtime_hash or record.get('runtime') != runtime_hash
                 or time.time() - old_check.get('created_at', 0) > 7 * 86400):
             atomic_json(check_path, {'marker': 'BRIDGE_SETUP_' + secrets.token_hex(12),
-                'model': selected, 'account': account_hash, 'config': config_hash,
+                'model': selected, 'account': account_hash, 'config': config_hash, 'runtime': runtime_hash,
                 'created_at': time.time(), 'completed': False})
-        runtime_hash = hashlib.sha256(b''.join(p.read_bytes() for p in sorted(Path(__file__).parent.glob('*.py')))).hexdigest()
         restart = (old_models != (directory / 'models.json').read_bytes()
                    or record.get('account') != account_hash or record.get('runtime') != runtime_hash)
         record.update(account=account_hash, runtime=runtime_hash)

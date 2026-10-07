@@ -19,6 +19,8 @@ The user giving you this repository already has a working Claude Code desktop ag
 
 3. Read only the redacted JSON result. Exit code **2 means setup is pending**, not a failed install. If phase is `awaiting_login`, repeat without `--no-login` and let the user authorize. Resolve service/dependency errors before touching desktop routing. `doctor` never makes model requests. To select a different account-listed model, rerun `setup --model chatgpt.EXACT_ID`; do not guess an ID.
 
+   Setup defaults desktop tool search on through the documented `toolSearchEnabled` key. Respect a user's existing preference and administrator restrictions: use `setup --no-tool-search` when it must remain off. The preference is saved for `continue`; `--tool-search` explicitly re-enables it. Verify actual tool deferral separately before claiming token savings, particularly on older desktop versions. Never use a force override against managed policy.
+
 4. The result includes `config_file`, `model`, and `verification_prompt`. `config_file` contains a private local gateway key. Pass its path to the app's file chooser; **do not print/read its contents into the conversation, clipboard, screenshots, issue trackers, or Git**. The generated configuration never contains an OpenAI access token.
 
 5. Save a checkpoint in this chat before a restart: the repository path, the command `python3 install.py doctor`, and the next action. Keep the setup result available. Desktop restarts may interrupt the installing agent; they cannot be guaranteed to resume it. Do not kill the app or interrupt unrelated work automatically.
@@ -33,11 +35,13 @@ The user giving you this repository already has a working Claude Code desktop ag
 
 10. Run `python3 install.py doctor` (Windows: `py -3 install.py doctor`). Success requires `desktop_verified: true`, a healthy bridge, and an installed background service. The bridge sets verification only after the desktop credential receives a completed response with the exact marker. The key is a routing check, not cryptographic proof of which UI sent it; you must also have observed the desktop result. Report the chosen model, the next-login startup behavior, and how to undo. If it remains pending, state the concrete remaining step.
 
+    Describe this as verification of the short desktop routing check. It does not establish tool approvals, MCP discovery, images, compaction, cross-provider switching in one dropdown, or long quota waits. Test the intended workload separately within the user's authorization. Do not generate extra paid test requests solely to make the setup claim broader.
+
 ## Undo and upgrades
 
 Run `install.py undo` first. It leaves the bridge running and tells you how to restore the previous desktop route. Select the old named profile or standard Anthropic sign-in and restart; if necessary, import the saved `desktop-previous.json` without printing it. Only after observing that restoration, run `install.py undo --desktop-restored`. That stops/removes the owned service and deletes the bridge's desktop-local key/config. It preserves OAuth state and the previous-config backup; remote revocation is done by the user in ChatGPT. Delete the now-unused named bridge profile in the desktop UI through its normal recoverable workflow if available.
 
-For upgrades, update this checkout and rerun `install.py continue`. The runtime is rebuilt only when public source changes. If import contents/models changed, reimport into the named bridge configuration and restart. Never overwrite unrelated service definitions or delete another app's runtime to resolve a conflict.
+For upgrades, update this checkout and rerun `install.py continue`. The runtime is rebuilt only when public source changes. If import contents/models changed, reimport into the named bridge configuration and restart. Bridge Python code changes invalidate the old routing verification even when the import is identical: send the new verification prompt through Desktop and run `doctor` again. Old verification records without a code fingerprint also need a fresh check. Never overwrite unrelated service definitions or delete another app's runtime to resolve a conflict.
 
 ## Privacy and constraints
 

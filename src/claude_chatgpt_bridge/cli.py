@@ -27,6 +27,9 @@ def launch_environment(directory, port, environment=None):
                ANTHROPIC_API_KEY=key,
                ANTHROPIC_CUSTOM_HEADERS='x-local-claude-bridge-key: ' + key,
                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
+    # Custom API hosts otherwise load every MCP schema upfront. This adapter
+    # supports ToolSearch; retain explicit user values and managed restrictions.
+    env.setdefault('ENABLE_TOOL_SEARCH', 'true')
     return env
 
 
@@ -104,6 +107,8 @@ def parser():
     setup.add_argument('--model', help='Optional exact chatgpt.* model; otherwise use the account list order.')
     setup.add_argument('--no-login', action='store_true', help='Return awaiting_login without opening a browser.')
     setup.add_argument('--previous-config', type=Path, help='Privately back up an existing app-exported JSON config.')
+    setup.add_argument('--tool-search', action=argparse.BooleanOptionalAction, default=None,
+                       help='Enable desktop MCP tool deferral (default on; saved across resumes).')
     steps.add_parser('doctor', help='Check service and actual desktop verification; no inference.')
     undo = steps.add_parser('undo', help='Restore app routing first, then remove only the owned service.')
     undo.add_argument('--desktop-restored', action='store_true', help='Confirm the app has returned to its previous provider.')
@@ -126,7 +131,7 @@ def main():
             from . import desktop
             if args.desktop_command == 'setup':
                 result = asyncio.run(desktop.setup(directory, model=args.model, no_login=args.no_login,
-                    previous_config=args.previous_config, preferred_port=args.port))
+                    previous_config=args.previous_config, preferred_port=args.port, tool_search=args.tool_search))
             elif args.desktop_command == 'doctor':
                 result = asyncio.run(desktop.doctor(directory))
             else:

@@ -82,6 +82,18 @@ class StateTests(unittest.TestCase):
             self.assertNotIn('CLAUDE_CODE_USE_BEDROCK', result)
             self.assertEqual(result['ANTHROPIC_BASE_URL'], 'http://127.0.0.1:12345')
             self.assertNotIn('synthetic-sensitive', json.dumps(result))
+            self.assertEqual(result['ENABLE_TOOL_SEARCH'], 'true')
+
+    def test_launcher_respects_explicit_tool_search_and_beta_preferences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = state.initialize(tmp)
+            for preference in ('false', 'auto:5', 'true'):
+                original = {'ENABLE_TOOL_SEARCH': preference,
+                            'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS': '1'}
+                result = cli.launch_environment(path, 12345, original)
+                self.assertEqual(result['ENABLE_TOOL_SEARCH'], preference)
+                self.assertEqual(result['CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS'], '1')
+                self.assertEqual(original['ENABLE_TOOL_SEARCH'], preference)
 
     def test_status_omits_identity_and_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:

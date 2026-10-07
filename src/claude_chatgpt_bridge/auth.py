@@ -71,22 +71,42 @@ class Auth:
                 if profile.get('expires_at', 0) < time.time() + 120:
                     if not profile.get('refresh_token'):
                         raise RuntimeError('ChatGPT login expired. Run claude-chatgpt login.')
-                    tokens = await token_request(session, {
-                        'grant_type': 'refresh_token', 'client_id': profile['client_id'],
-                        'refresh_token': profile['refresh_token'], 'resource': RESOURCE})
-                    updated = merge_tokens(profile, tokens)
-                    if 'id_token' in tokens:
-                        claims = await verify_identity(session, tokens['id_token'], profile['client_id'])
-                        if claims['sub'] != profile['subject']:
-                            raise RuntimeError('Refreshed ChatGPT identity did not match; sign in again.')
-                    data['profiles'][profile['client_id']] = updated
-                    atomic_json(self.path, data)
-                    profile = updated
+                    # The HTTP worker cannot be stopped by cancelling its caller.
+                    # Keep both locks until replacement credentials are validated
+                    # and saved, even if the model request has disconnected.
+                    transaction = asyncio.create_task(self.refresh(session, data, profile))
+                    try:
+                        profile = await asyncio.shield(transaction)
+                    except asyncio.CancelledError:
+                        while not transaction.done():
+                            try:
+                                await asyncio.shield(transaction)
+                            except asyncio.CancelledError:
+                                continue
+                            except Exception:
+                                break
+                        if not transaction.cancelled():
+                            transaction.exception()  # Consume failure for the cancelled caller.
+                        raise  # Never continue the cancelled model request.
                 if 'chatgpt.tokens.use.direct' not in profile['scopes']:
                     raise RuntimeError('ChatGPT plan usage permission is no longer enabled.')
                 return {'Authorization': 'Bearer ' + profile['access_token'],
                         'Content-Type': 'application/json', 'Accept': 'text/event-stream, application/json',
                         'Accept-Encoding': 'identity'}
+
+    async def refresh(self, session, data, profile):
+        """Caller owns both auth locks until this transaction finishes."""
+        tokens = await token_request(session, {
+            'grant_type': 'refresh_token', 'client_id': profile['client_id'],
+            'refresh_token': profile['refresh_token'], 'resource': RESOURCE})
+        updated = merge_tokens(profile, tokens)
+        if 'id_token' in tokens:
+            claims = await verify_identity(session, tokens['id_token'], profile['client_id'])
+            if claims['sub'] != profile['subject']:
+                raise RuntimeError('Refreshed ChatGPT identity did not match; sign in again.')
+        data['profiles'][profile['client_id']] = updated
+        atomic_json(self.path, data)
+        return updated
 
 
 @contextlib.asynccontextmanager

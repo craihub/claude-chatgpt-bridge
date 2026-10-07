@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-chatgpt-bridge"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "A local Claude Code adapter for official Sign in with ChatGPT plan usage"
 readme = "README.md"
 requires-python = ">=3.11"

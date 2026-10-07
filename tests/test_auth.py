@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import socket
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -138,4 +139,80 @@ class LoginTests(unittest.IsolatedAsyncioTestCase):
         await self.exercise(True)
 
     async def test_denied_plan_scope_never_activates_account(self):
+        await self.exercise(False)
+
+
+class RefreshCancellationTests(unittest.IsolatedAsyncioTestCase):
+    async def exercise(self, succeeds):
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = auth.Auth(tmp)
+            original = {'active': 'synthetic-client', 'profiles': {'synthetic-client': {
+                'client_id': 'synthetic-client', 'access_token': 'synthetic-old-access',
+                'refresh_token': 'synthetic-old-refresh', 'subject': 'synthetic-subject',
+                'scopes': ['chatgpt.tokens.use.direct'], 'expires_at': 0}}}
+            auth.atomic_json(provider.path, original)
+            loop = asyncio.get_running_loop()
+            started = asyncio.Event()
+            release = threading.Event()
+            inference_started = asyncio.Event()
+
+            class Response:
+                status_code = 200
+                def __enter__(self): return self
+                def __exit__(self, *args): pass
+                def iter_content(self, size):
+                    loop.call_soon_threadsafe(started.set)
+                    if not release.wait(5):
+                        raise RuntimeError('Synthetic worker was not released')
+                    if not succeeds:
+                        raise RuntimeError('Synthetic refresh failure')
+                    yield json.dumps({'access_token': 'synthetic-new-access',
+                        'refresh_token': 'synthetic-new-refresh', 'expires_in': 3600,
+                        'token_type': 'Bearer'}).encode()
+
+            async def model_request():
+                await provider.headers(None)
+                inference_started.set()
+
+            with patch.object(auth.requests, 'post', return_value=Response()) as exchange:
+                task = asyncio.create_task(model_request())
+                contender = None
+                try:
+                    await asyncio.wait_for(started.wait(), 2)
+                    task.cancel()
+                    await asyncio.sleep(0)
+                    task.cancel()  # A second disconnect/shutdown cancellation must not drop the lock.
+                    await asyncio.sleep(0)
+                    self.assertFalse(task.done())
+                    self.assertTrue(provider.lock.locked())
+                    with self.assertRaises(auth.Timeout):
+                        with auth.FileLock(str(Path(tmp) / 'auth.lock'), timeout=0, mode=0o600):
+                            pass
+                    if succeeds:
+                        # A different Auth instance must use the replacement, not race the worker.
+                        contender = asyncio.create_task(auth.Auth(tmp).headers(None))
+                    release.set()
+                    with self.assertRaises(asyncio.CancelledError):
+                        await asyncio.wait_for(task, 3)
+                    self.assertFalse(inference_started.is_set())
+                    if succeeds:
+                        headers = await asyncio.wait_for(contender, 3)
+                        self.assertEqual(headers['Authorization'], 'Bearer synthetic-new-access')
+                        saved = provider.read()['profiles']['synthetic-client']
+                        self.assertEqual(saved['refresh_token'], 'synthetic-new-refresh')
+                        self.assertGreater(saved['expires_at'], time.time() + 3000)
+                        self.assertEqual(exchange.call_count, 1)
+                    else:
+                        self.assertEqual(provider.read(), original)
+                    self.assertFalse(provider.lock.locked())
+                    with auth.FileLock(str(Path(tmp) / 'auth.lock'), timeout=0, mode=0o600):
+                        pass
+                finally:
+                    release.set()
+                    await asyncio.gather(task, *([contender] if contender else []), return_exceptions=True)
+
+    async def test_cancelled_refresh_saves_replacement_and_serializes_next_caller(self):
+        await self.exercise(True)
+
+    async def test_refresh_failure_after_cancellation_preserves_credentials_and_releases_lock(self):
         await self.exercise(False)
