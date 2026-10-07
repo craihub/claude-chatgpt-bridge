@@ -8,9 +8,9 @@ The bridge translates Anthropic Messages requests into Responses API requests, s
 
 ## Desktop preview
 
-![Claude Desktop model picker with Sol 6.1 · ChatGPT selected and other ChatGPT options listed](docs/images/desktop-chatgpt-models.png)
+![Claude Desktop overview and open model picker with Sol 6.1 · ChatGPT selected](docs/images/desktop-chatgpt-models.png)
 
-Screenshot from an existing customized local desktop setup, cropped to remove personal usage details. This shows ChatGPT options in its model picker; the repository installer uses the separate gateway configuration described below and does not reproduce this combined provider menu. Available models and labels depend on your account and client version.
+Full screenshot from an existing customized local desktop setup. This shows ChatGPT options in its model picker; the repository installer uses the separate gateway configuration described below and does not reproduce this combined provider menu. Available models and labels depend on your account and client version.
 
 ## What it provides
 
