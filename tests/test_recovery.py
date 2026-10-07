@@ -8,10 +8,11 @@ from pathlib import Path
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from claude_chatgpt_bridge import bridge
+from claude_chatgpt_bridge import bridge, quota_recovery
 from claude_chatgpt_bridge.quota_recovery import QUOTA_CODE, ReplyStream, retry_delay
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -213,13 +214,22 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bridge.quota.waiters, 0)
 
     async def test_disconnect_during_cooldown_stops_rechecks(self):
-        self.bridge.quota.pause({'retry-after': '.18'})
-        response = await self.client.post('/v1/messages', json=PAYLOAD, headers=self.headers)
-        await response.content.readline()
-        response.close()
-        await asyncio.sleep(.23)
-        self.assertEqual(self.requests, [])
-        self.assertEqual(self.bridge.quota.waiters, 0)
+        # Connection setup can exceed the short test cooldown on a busy runner.
+        # Hold quota time still until the real client disconnect is acknowledged.
+        quota_now = time.time()
+        with patch.object(quota_recovery, 'time', SimpleNamespace(time=lambda: quota_now)):
+            self.bridge.quota.pause({'retry-after': '.18'})
+            response = await self.client.post('/v1/messages', json=PAYLOAD, headers=self.headers)
+            await response.content.readline()
+            self.assertEqual(self.bridge.quota.waiters, 1)
+            response.close()
+            async with asyncio.timeout(5):
+                while self.bridge.quota.waiters:
+                    await asyncio.sleep(.01)
+            quota_now += 1
+            await asyncio.sleep(.23)
+            self.assertEqual(self.requests, [])
+            self.assertEqual(self.bridge.quota.waiters, 0)
 
     async def test_nonstream_json_recovers(self):
         self.actions.append(quota())
