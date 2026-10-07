@@ -132,7 +132,24 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_http_quota_recovers_exact_original_request(self):
         self.actions.append(quota())
-        response, text = await self.send()
+        # Hold the recovered response until the client observes two heartbeats.
+        # Runner load can consume the short cooldown in a single scheduling turn.
+        release = asyncio.Event()
+        async def recovered(request):
+            await asyncio.wait_for(release.wait(), 5)
+            return await sse(request, [created(), delta(), complete()])
+        self.actions.append(recovered)
+        response = await self.client.post('/v1/messages', json=PAYLOAD, headers=self.headers)
+        prefix = bytearray()
+        try:
+            async with asyncio.timeout(5):
+                while prefix.count(b'event: ping\n') < 2:
+                    line = await response.content.readline()
+                    self.assertTrue(line, 'Stream ended before pending-request heartbeats arrived.')
+                    prefix.extend(line)
+        finally:
+            release.set()
+        text = (bytes(prefix) + await response.read()).decode()
         self.assertEqual(response.status, 200)
         self.assert_success(text)
         self.assertEqual(len(self.requests), 2)

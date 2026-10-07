@@ -1,6 +1,6 @@
 # Compatibility
 
-Python 3.11+ is required. The bridge and installer tests run locally on Linux. The installer implements Linux user systemd, macOS LaunchAgents and Windows per-user scheduled tasks, with portable file locking and Windows state ACLs. CI is configured for all three operating systems, but macOS/Windows runs and real desktop installation tests are still pending. They remain provisional targets.
+Python 3.11+ is required. The installer implements Linux user systemd, macOS LaunchAgents and Windows per-user scheduled tasks, with portable file locking and Windows state ACLs. Native CI exercises Python 3.11–3.13 on all three operating systems, including synthetic protocol tests, private storage, release builds and dependency audits; consult the latest workflow result. Native service lifecycle and real desktop installation tests remain pending, so desktop support is provisional on every platform.
 
 The [desktop workflow](DESKTOP_SETUP.md) generates documented gateway import JSON and guides the installing agent through the app's supported UI. It requires an editable third-party configuration, local HTTP gateway acceptance, account-specific model IDs and a completed response in the actual Code tab. No desktop version has yet passed this new onboarding flow end to end. CLI protocol tests do not establish desktop compatibility. Installation remains pending when UI tools, permissions, a restart or provider compatibility prevent verification.
 

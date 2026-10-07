@@ -46,7 +46,7 @@ The default port is 11438; setup picks an unused loopback port if occupied and s
 
 ## Validation status
 
-Linux automated tests run locally. macOS and Windows branches have platform-specific CI jobs and synthetic checks, but real native desktop sign-in/import/restart testing is still required before declaring either supported. This repository is an experimental release candidate, not a universal installer guarantee.
+Native CI exercises Linux, macOS and Windows on Python 3.11–3.13, with synthetic protocol tests, private storage checks, release builds and dependency audits. Consult the latest workflow result. Native service lifecycle and real desktop sign-in/import/restart testing are still required on each platform. This repository is an experimental release candidate, not a universal installer guarantee.
 
 ## Official references
 

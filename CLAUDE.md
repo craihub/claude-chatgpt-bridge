@@ -5,7 +5,7 @@ The user giving you this repository already has a working Claude Code desktop ag
 ## Scope and facts
 
 - Target the **Code tab of Claude Desktop**, not just the terminal CLI. Do not call the task complete after testing `claude` in a terminal.
-- Linux execution is tested locally. Windows and macOS implementations have native CI jobs, but support must remain provisional until those jobs and real desktop tests pass. Do not assume an OS was validated just because a service file can be generated.
+- Native CI exercises Linux, macOS and Windows protocol/storage checks and release builds. Check its latest result. Desktop support remains provisional until the native service lifecycle and real desktop onboarding pass on the user's platform; a generated service file does not prove either.
 - Use the supported desktop **Import configuration** UI. Do not patch application bundles, ASAR files, registry policy, managed preferences, or invent undocumented config-library filenames.
 - This creates a separate named gateway configuration, which changes desktop inference when selected. It does not add ChatGPT models to an existing Bedrock/Vertex/native configuration in place. Keep the original configuration available. Existing chats and provider credentials must be preserved.
 - The gateway flow may affect Chat and Cowork too; Code is the target and the new desktop onboarding flow still needs end-to-end validation. Do not advertise support for the other tabs or bypass errors for their unsupported tools.
