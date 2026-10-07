@@ -291,7 +291,7 @@ class BootstrapTests(unittest.TestCase):
                 python.parent.mkdir(parents=True)
                 python.write_bytes(b'')
                 (env_dir / 'pyvenv.cfg').write_text('synthetic')
-            with patch.object(self.bootstrap, 'ROOT', root), \
+            with patch.object(self.bootstrap, 'ROOT', root.resolve()), \
                  patch.object(self.bootstrap.venv.EnvBuilder, 'create', side_effect=create) as venv_create, \
                  patch.object(self.bootstrap.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as pip:
                 first = self.bootstrap.install(runtime)
