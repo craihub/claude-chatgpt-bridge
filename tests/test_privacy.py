@@ -23,8 +23,9 @@ class StateTests(unittest.TestCase):
             key = (path / 'bridge.key').read_bytes()
             state.initialize(path)
             self.assertEqual((path / 'bridge.key').read_bytes(), key)
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
-            self.assertEqual(stat.S_IMODE((path / 'bridge.key').stat().st_mode), 0o600)
+            if os.name != 'nt':
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
+                self.assertEqual(stat.S_IMODE((path / 'bridge.key').stat().st_mode), 0o600)
 
     def test_rejects_state_inside_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -34,6 +35,7 @@ class StateTests(unittest.TestCase):
                 state.initialize(Path(tmp) / 'state')
             self.assertFalse((Path(tmp) / 'state').exists())
 
+    @unittest.skipIf(os.name == 'nt', 'Windows ACLs tested separately')
     def test_rejects_symlinks_and_open_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / 'private'
@@ -51,7 +53,7 @@ class StateTests(unittest.TestCase):
                 state.initialize(target)
 
     def test_xdg_and_override(self):
-        with patch.dict(os.environ, {'XDG_STATE_HOME': '/tmp/synthetic-state'}, clear=True):
+        with patch('claude_chatgpt_bridge.platforms.platform_name', return_value='linux'), patch.dict(os.environ, {'XDG_STATE_HOME': '/tmp/synthetic-state'}, clear=True):
             self.assertEqual(state.default_directory(), Path('/tmp/synthetic-state/claude-chatgpt-bridge'))
         with patch.dict(os.environ, {'CLAUDE_CHATGPT_STATE_DIR': '/tmp/synthetic-override'}):
             self.assertEqual(state.default_directory(), Path('/tmp/synthetic-override'))
@@ -60,7 +62,8 @@ class StateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'synthetic.json'
             auth.atomic_json(path, {'active': None})
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != 'nt':
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             self.assertEqual(list(Path(tmp).iterdir()), [path])
 
     def test_launch_environment_does_not_modify_original(self):

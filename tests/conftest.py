@@ -1,6 +1,22 @@
 """Tests use only synthetic accounts and loopback servers."""
 import socket
+import os
+from pathlib import Path
+import tempfile
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def private_windows_temporary_directories(monkeypatch):
+    if os.name != 'nt':
+        return
+    from claude_chatgpt_bridge.platforms import protect_windows
+    original = tempfile.TemporaryDirectory
+    class PrivateDirectory(original):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            protect_windows(Path(self.name))
+    monkeypatch.setattr(tempfile, 'TemporaryDirectory', PrivateDirectory)
 
 
 @pytest.fixture(autouse=True)

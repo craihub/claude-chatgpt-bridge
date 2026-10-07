@@ -2,7 +2,6 @@
 import asyncio
 import base64
 import contextlib
-import fcntl
 import hashlib
 import html
 import json
@@ -18,6 +17,7 @@ import aiohttp
 from aiohttp import web
 import jwt
 import requests
+from filelock import FileLock, Timeout
 
 from .state import default_directory, ensure_private_directory
 
@@ -92,19 +92,22 @@ class Auth:
 @contextlib.asynccontextmanager
 async def file_lock(path):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    lock = FileLock(str(path), timeout=0, mode=0o600)
+    acquired = False
     try:
         for _ in range(600):
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock.acquire()
+                acquired = True
                 break
-            except BlockingIOError:
+            except Timeout:
                 await asyncio.sleep(0.1)
         else:
             raise RuntimeError('ChatGPT authentication is busy; retry shortly.')
         yield
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN); os.close(fd)
+        if acquired:
+            lock.release()
 
 
 async def token_request(session, payload):

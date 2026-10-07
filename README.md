@@ -1,8 +1,8 @@
 # Claude ChatGPT Bridge
 
-Use your own ChatGPT plan in Claude Code through a local adapter for OpenAI's official **Sign in with ChatGPT** flow.
+Use your own ChatGPT plan in Claude Code through a local adapter for OpenAI's official **Sign in with ChatGPT** flow. Includes an agent-run setup workflow for the **Code tab of Claude Desktop** and a separate terminal launcher.
 
-Experimental, Linux-first, and unofficial. This project is not affiliated with or endorsed by OpenAI or Anthropic. Install Claude Code separately; no proprietary client code or prompts are distributed here.
+Experimental and unofficial. Linux bridge tests run locally; Windows/macOS implementations and desktop onboarding still need native end-to-end validation. This project is not affiliated with or endorsed by OpenAI or Anthropic. Use your existing Claude installation; no proprietary client code or prompts are distributed here.
 
 The bridge translates Anthropic Messages requests into Responses API requests, streams the results back to Claude Code, and keeps OAuth credentials on your machine. Claude Code executes your local tools with its normal permission controls.
 
@@ -13,20 +13,34 @@ The bridge translates Anthropic Messages requests into Responses API requests, s
 - Streaming responses and preservation of tool-call history and opaque reasoning records.
 - Stable conversation prefixes and local token/cache accounting. Cache hits and savings are not guaranteed.
 - Automatic waiting after a subscription quota error, with five-minute minimum intervals and longer provider cooldowns respected. Checks stop when the waiting request disconnects. Requests that already produced output or tool activity are never automatically replayed.
-- A process-scoped Claude launcher: setup does not edit your Claude settings, install a service, or alter other model providers.
+- Resumable desktop setup, private gateway configuration, per-user background startup, verification and guarded undo.
+- A separate process-scoped terminal launcher that keeps persistent Claude settings unchanged.
 
 Your plan's limits still apply. This is not a way to bypass allowance or account access restrictions. Eligibility, models, and supported features depend on the account and the preview API.
 
+## Let your desktop agent install it
+
+Give your already-working Claude Code desktop agent this repository and say:
+
+> Install this bridge for the Code tab of my Claude Desktop app, following CLAUDE.md. Keep my existing provider configuration available. Handle installation and desktop configuration, let me sign into ChatGPT myself, and verify a real desktop response before calling it complete.
+
+[CLAUDE.md](CLAUDE.md) provides the agent workflow. [Desktop setup](DESKTOP_SETUP.md) explains commands, storage, restart checkpoints and rollback. The entry point is `python3 install.py setup` on Linux/macOS or `py -3 install.py setup` on Windows. Repeat with `continue` after an interruption; `doctor` reports what remains without sending model requests.
+
+The installer creates an isolated runtime outside the checkout, signs in, discovers models, generates a private desktop import file and starts a background service. An agent with native UI tools then imports that file as a separate named configuration and verifies a response from the desktop. The user completes ChatGPT consent personally. App restarts, OS prompts or missing UI tools can leave a manual step; the installer reports pending until verification succeeds.
+
+Selecting the gateway changes the desktop's active inference configuration. Existing Bedrock, Vertex or standard sign-in configurations must stay available for switching back. The bridge does not mix GPT models into an existing provider profile. Code is the target; Chat and Cowork may share the setting and are not validated.
+
 ## Requirements
 
-- Linux, Python 3.11 or newer, and a browser on the same computer.
-- Claude Code installed with `claude` on your `PATH`.
+- Python 3.11 or newer and a browser on the same computer. The existing installation agent can handle Python prerequisites.
+- For desktop: an installed Claude Desktop with editable third-party inference configuration; a per-user systemd session on Linux, LaunchAgent support on macOS, or Task Scheduler on Windows. Managed profiles require administrator support.
+- For terminal use: Claude Code installed with `claude` on your `PATH`.
 - A ChatGPT account eligible for plan usage, with permission explicitly granted during sign-in.
-- Free loopback ports 11438 (bridge) and 11439 (login).
+- Loopback networking. Desktop setup picks free ports automatically; manual CLI defaults are 11438 (bridge) and 11439 (login).
 
 The source integration was exercised with Claude Code 2.1.291. Other client versions may change the protocol. See [compatibility](COMPATIBILITY.md) before relying on a particular feature.
 
-## Install and connect
+## Terminal-only alternative
 
 Download or clone this repository, then run from its directory:
 
@@ -60,11 +74,11 @@ The placeholder must be replaced with an available model. You can pass Claude op
 
 ## State and privacy
 
-The default directory is `$XDG_STATE_HOME/claude-chatgpt-bridge`, or `~/.local/state/claude-chatgpt-bridge` when XDG is unset. It contains OAuth credentials, a local bridge key, the account model list, quota state, and a small rotating usage ledger. These are **runtime data, never files to upload or commit**.
+The Linux default is `$XDG_STATE_HOME/claude-chatgpt-bridge`, or `~/.local/state/claude-chatgpt-bridge` when XDG is unset. macOS uses `~/Library/Application Support/ClaudeChatGPTBridge/state`; Windows uses `%LOCALAPPDATA%/ClaudeChatGPTBridge/state`. It contains OAuth credentials, local bridge keys, the account model list, quota state, and a small rotating usage ledger. Desktop setup also stores private configuration and verification records. These are **runtime data, never files to upload or commit**.
 
-Directories must be owned by you and private (`0700`); files must be private (`0600`). Symlinked state and state inside Git checkouts are refused. Use a dedicated directory. Override it with `CLAUDE_CHATGPT_STATE_DIR` or `--state-dir` before the command. Set `--port` before the command on both `serve` and `run` when changing ports.
+State must be owned by you and private: POSIX `0700` directories/`0600` files, or a protected Windows ACL. Symlinked state, Windows reparse points and state inside Git checkouts are refused. Use a dedicated directory. Override it with `CLAUDE_CHATGPT_STATE_DIR` or `--state-dir` before the command. Set `--port` before the command on both `serve` and `run` when changing manual CLI ports.
 
-The bridge binds only to `127.0.0.1`, requires a local key for its API and health endpoint, and rejects browser-origin inference requests. Tokens are never command-line arguments. Only ChatGPT authorization is sent to OpenAI. Explicit Claude forwarding, disabled by default, requires its own Claude OAuth credential and `serve --allow-claude`.
+The bridge binds only to `127.0.0.1`, requires a local key and rejects browser-origin inference requests. Desktop receives a separate key that cannot access admin health or native Claude forwarding. Tokens are never command-line arguments. Only ChatGPT authorization is sent to OpenAI. Explicit Claude forwarding, disabled by default, requires its own Claude OAuth credential and `serve --allow-claude` for CLI requests.
 
 Prompts, tool results, and attachments are sent to the selected provider to answer your requests. Claude Code may retain them in its own session history. The bridge keeps bounded continuation data in memory, but its usage ledger records counts, model IDs and keyed fingerprints rather than conversation bodies or tokens. There is no project telemetry or automatic log upload. See [security and data handling](SECURITY.md).
 
@@ -86,7 +100,9 @@ Normally quota recovery is automatic while a request remains connected. If the c
 
 ## Remove
 
-Stop `serve` and close the launched Claude session. Run `python -m pip uninstall claude-chatgpt-bridge` in the installation environment, or remove that dedicated virtual environment. No persistent Claude settings were installed. Optionally revoke access in ChatGPT and delete the dedicated private state directory after checking its path. Do not publish it in an issue report.
+For desktop, run `python3 install.py undo` (Windows: `py -3 install.py undo`). Restore the previous named desktop configuration or standard sign-in and restart, then run `undo --desktop-restored`. This removes only the owned service and desktop-local credential/config. OAuth state and the private previous-config backup remain for reuse.
+
+For the terminal-only setup, stop `serve`, close the launched session and remove its dedicated virtual environment. After desktop rollback you may also remove the dedicated bootstrap runtime. Optionally revoke access in ChatGPT and delete the dedicated private state directory after checking its path. Never publish runtime files in an issue report.
 
 ## Develop and validate
 

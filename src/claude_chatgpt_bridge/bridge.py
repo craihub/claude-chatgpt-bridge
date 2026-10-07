@@ -780,6 +780,10 @@ class Bridge:
         self.directory, self.port = ensure_private_directory(directory), port
         self.allow_claude = allow_claude
         self.key = (self.directory / 'bridge.key').read_text().strip()
+        desktop_key = self.directory / 'desktop.key'
+        self.desktop_key = desktop_key.read_text().strip() if desktop_key.exists() else None
+        if self.desktop_key is not None and len(self.desktop_key) < 32:
+            raise ValueError('Invalid desktop bridge credential.')
         if len(self.key) < 16:
             raise ValueError('Invalid local bridge credential; run claude-chatgpt setup.')
         self.auth = Auth(self.directory)
@@ -908,8 +912,25 @@ class Bridge:
             'pending requests then recheck automatically. Usage: https://chatgpt.com/settings/usage',
             'rate_limit_error', QUOTA_CODE, retry=False)
 
+    def credential_kind(self, request):
+        if KEY_HEADER in request.headers:
+            return 'bridge' if secrets.compare_digest(request.headers[KEY_HEADER], self.key) else None
+        if not self.desktop_key:
+            return None
+        candidates = []
+        if 'Authorization' in request.headers:
+            scheme, _, value = request.headers['Authorization'].partition(' ')
+            if scheme.lower() != 'bearer':
+                return None
+            candidates.append(value)
+        if 'x-api-key' in request.headers:
+            candidates.append(request.headers['x-api-key'])
+        if candidates and all(secrets.compare_digest(v, self.desktop_key) for v in candidates):
+            return 'desktop'
+        return None
+
     def authorized(self, request):
-        return secrets.compare_digest(request.headers.get(KEY_HEADER, ''), self.key)
+        return self.credential_kind(request) is not None
 
     async def setup(self, app):
         audit_path = self.directory / 'usage-audit.jsonl'
@@ -924,7 +945,7 @@ class Bridge:
         self.audit_handler.close()
 
     async def health(self, request):
-        if not self.authorized(request) or request.headers.get('Origin'):
+        if self.credential_kind(request) != 'bridge' or request.headers.get('Origin'):
             return error_response(401, 'Missing local adapter credential.', 'authentication_error')
         state = self.quota.state()
         return web.json_response({'ok': True, 'service': 'claude-chatgpt-bridge',
@@ -969,7 +990,7 @@ class Bridge:
             if alias in self.aliases:
                 return await self.chatgpt(request, payload, alias, routing)
             if alias.startswith('claude-'):
-                if not self.allow_claude:
+                if not self.allow_claude or self.credential_kind(request) == 'desktop':
                     return error_response(401, 'Claude forwarding is disabled. Use Claude Code directly or explicitly enable forwarding.', 'authentication_error')
                 return await self.native(request, payload, raw)
             return error_response(400, 'Unknown model: ' + str(alias), 'invalid_request_error')
@@ -1212,6 +1233,9 @@ class Bridge:
                 if category in ('main', 'compaction'):
                     self.remember_cache(session_id, converted, details)
                 request['bridge_completed'] = getattr(translator, 'completed', False)
+                if request['bridge_completed'] and self.credential_kind(request) == 'desktop':
+                    from .desktop import observe_completion
+                    observe_completion(self.directory, payload, alias, translator.final.get('content', []))
             except ResponseError as error:
                 self.audit('upstream_error', request=request_id, model=model, status=error.status, code=error.code,
                     **response_info)

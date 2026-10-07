@@ -1,6 +1,8 @@
 # Compatibility
 
-This release targets local Linux usage with Python 3.11+. Windows is unsupported because authentication uses POSIX file locks. macOS has not been validated. No automatic systemd installation is included.
+Python 3.11+ is required. The bridge and installer tests run locally on Linux. The installer implements Linux user systemd, macOS LaunchAgents and Windows per-user scheduled tasks, with portable file locking and Windows state ACLs. CI is configured for all three operating systems, but macOS/Windows runs and real desktop installation tests are still pending. They remain provisional targets.
+
+The [desktop workflow](DESKTOP_SETUP.md) generates documented gateway import JSON and guides the installing agent through the app's supported UI. It requires an editable third-party configuration, local HTTP gateway acceptance, account-specific model IDs and a completed response in the actual Code tab. No desktop version has yet passed this new onboarding flow end to end. CLI protocol tests do not establish desktop compatibility. Installation remains pending when UI tools, permissions, a restart or provider compatibility prevent verification.
 
 The underlying bridge was exercised with Claude Code 2.1.291. The release suite tests the translated HTTP/SSE protocol with synthetic providers. A mocked protocol test is not a guarantee that every model, Claude release, account, or OAuth deployment works.
 
@@ -20,12 +22,14 @@ The underlying bridge was exercised with Claude Code 2.1.291. The release suite 
 | Anthropic `max_tokens` | Not enforced upstream; SIWC rejects `max_output_tokens` |
 | Custom temperature/top-p | Not forwarded; model/provider defaults apply |
 | Cache controls | Provider-default caching; no explicit TTL or guaranteed hit rate |
-| Native Claude forwarding | Explicit opt-in; requires separate Claude OAuth, no subscription fallback |
+| Native Claude forwarding | CLI only, explicit opt-in; requires separate Claude OAuth, no subscription fallback |
+| Desktop provider coexistence | Separate named configuration; preserves original profile for switching back, no mixed-provider patch |
+| Desktop Chat/Cowork | Not validated; may share the selected gateway setting |
 
 When the client supplies request-class headers, small auxiliary work can use an available lighter ChatGPT model. Compaction may also use it when the account-reported context window is sufficient; recent observed prefix reuse can keep compaction on the main model. These decisions preserve all supplied input. Missing request-class headers disable this classification. Model availability comes from the signed-in account, not a bundled personal catalog.
 
 Quota recovery retries only before output or tool activity. It honors provider `Retry-After` and a five-minute minimum between checks. Pending state does not survive client disconnection or a bridge restart; reconnect the request to resume waiting. Authentication errors and other failures are surfaced without switching provider.
 
-Account changes require stopping and restarting `serve`: already-running requests cannot be recalled by changing local account selection. Use separate state directories and bridge ports for separate simultaneous accounts.
+Manual account changes require stopping and restarting `serve`: already-running requests cannot be recalled by changing local account selection. Desktop `install.py continue` refreshes models and restarts its owned service when the account or runtime changes, then requires renewed desktop verification. Use separate state directories and bridge ports for separate simultaneous accounts.
 
 The [official preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) can change. Do not infer unlimited usage or compatibility from model names.

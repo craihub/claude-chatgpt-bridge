@@ -10,6 +10,12 @@ OAuth tokens, email/subject, registration IDs, host ID, and the local API key re
 
 Only a registration ID and host ID are retained after an incomplete registration; authorization codes, PKCE verifiers, and unvalidated token responses are not saved for troubleshooting. The callback listener uses loopback and does not write HTTP access logs. Status output omits identities by default. The explicit `accounts --show-identity` command displays email addresses locally.
 
+Desktop setup generates a distinct local gateway key. Its private import JSON contains that key, never OpenAI tokens. Import by file path without printing the contents. The desktop app necessarily stores its gateway configuration under its own security policy. Previous configuration exports may contain other providers' credentials: keep them in private local storage and never attach them to a chat or issue. The installer preserves an exact backup and refuses to overwrite it with different content.
+
+The desktop key authorizes translated ChatGPT inference/model listing only; it cannot call admin health or native Claude forwarding. A random one-time marker records a completed setup response, bound to the account, configuration and a seven-day window. This is a routing check, not cryptographic proof of which UI sent it; the installation agent must also observe the response in Claude Desktop. `doctor` does not send inference requests.
+
+Background service definitions contain paths, never credentials. The installer uses per-user startup and checks its receipt before replacing or removing a definition. Undo leaves the bridge running until the app's original route has been restored. Managed settings, application bundles and existing provider profiles must not be patched to force compatibility.
+
 ## Requests and logs
 
 The service is loopback-only and key-authenticated. Browser-origin inference is rejected. OpenAI requests use their own OAuth credentials and fixed HTTPS endpoints with redirects disabled. Claude forwarding is opt-in and uses only the client's separate Claude credential. Unknown models fail; there is no fallback that bills another provider.

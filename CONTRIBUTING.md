@@ -6,4 +6,6 @@ Install `.[dev]`, prepare the tokenizer cache, and run `python -m pytest -q` and
 
 Include regression coverage for authentication, translation, routing or retry behavior that changes. Document compatibility limits honestly. Do not silently drop user context, bypass tool approvals, retry after tool activity, or switch billing providers on failure.
 
+Desktop changes must preserve existing provider profiles, remain resumable and support guarded undo. Test generated service definitions, account/config verification invalidation and credential isolation with synthetic data. Validate native ACLs and service lifecycle on each target OS before claiming support. A terminal response is not a desktop acceptance test. Do not use live accounts or install services into a contributor's ordinary profile during automated tests.
+
 Before a release, build the wheel and source distribution, scan them with `--artifacts dist`, inspect dependency advisories, and confirm that a fresh environment can install and run the CLI. Review Git metadata as well as file contents. CI should run without repository secrets and with read-only permissions.

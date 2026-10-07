@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-chatgpt-bridge"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "A local Claude Code adapter for official Sign in with ChatGPT plan usage"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Claude ChatGPT Bridge contributors"}]
-classifiers = ["Development Status :: 3 - Alpha", "Operating System :: POSIX :: Linux", "Programming Language :: Python :: 3"]
+classifiers = ["Development Status :: 3 - Alpha", "Operating System :: POSIX :: Linux", "Operating System :: MacOS :: MacOS X", "Operating System :: Microsoft :: Windows", "Programming Language :: Python :: 3"]
 dependencies = [
   "aiohttp>=3.13.3,<4",
   "PyJWT[crypto]>=2.10.1,<3",
@@ -19,6 +19,8 @@ dependencies = [
   "requests>=2.32.5,<3",
   "tiktoken>=0.12.0,<1",
   "Pillow>=12.1.1,<14",
+  "filelock>=3.20,<5",
+  "pywin32>=311; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

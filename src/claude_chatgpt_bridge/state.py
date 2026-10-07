@@ -4,13 +4,14 @@ from pathlib import Path
 import secrets
 import stat
 
+from .platforms import app_directory, check_windows_private, is_link, protect_windows
+
 
 def default_directory():
     override = os.environ.get('CLAUDE_CHATGPT_STATE_DIR')
     if override:
         return Path(override).expanduser()
-    base = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
-    return base / 'claude-chatgpt-bridge'
+    return app_directory()
 
 
 def ensure_private_directory(directory):
@@ -22,9 +23,24 @@ def ensure_private_directory(directory):
         return (marker.is_dir() and (marker / 'HEAD').is_file()) or marker.is_file()
     if any(checkout(p) for p in (path, *path.parents)):
         raise ValueError('Runtime state must be outside a Git checkout.')
-    if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+    # macOS exposes /tmp and /var through OS-owned aliases; resolve ancestors,
+    # while still rejecting a linked state directory or linked state files.
+    if is_link(path):
         raise ValueError('Runtime state must not use symbolic links.')
+    path = path.parent.resolve() / path.name
+    if any(checkout(p) for p in (path, *path.parents)):
+        raise ValueError('Runtime state must be outside a Git checkout.')
+    created = not path.exists()
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name == 'nt':
+        if created:
+            protect_windows(path)
+        check_windows_private(path)
+        for child in path.iterdir():
+            if is_link(child):
+                raise ValueError('Runtime state must not contain links or reparse points.')
+            check_windows_private(child)
+        return path
     info = path.stat()
     if info.st_uid != os.getuid():
         raise ValueError('Runtime state must belong to the current user.')
@@ -32,7 +48,7 @@ def ensure_private_directory(directory):
     if stat.S_IMODE(info.st_mode) & 0o077:
         raise ValueError('Runtime state needs private permissions (chmod 700).')
     for child in path.iterdir():
-        if child.is_symlink():
+        if is_link(child):
             raise ValueError('Runtime state must not contain symbolic links.')
         info = child.stat()
         if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
@@ -44,7 +60,7 @@ def initialize(directory):
     path = ensure_private_directory(directory)
     key_path = path / 'bridge.key'
     try:
-        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
     except FileExistsError:
         if len(key_path.read_text().strip()) < 32:
             raise ValueError('Existing bridge credential is invalid.')

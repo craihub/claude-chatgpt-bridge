@@ -98,6 +98,15 @@ def parser():
     account.add_argument('--select', type=int)
     account.add_argument('--show-identity', action='store_true', help='Print saved email addresses locally.')
     commands.add_parser('logout', help='Deselect active account; revoke access separately in ChatGPT.')
+    desktop = commands.add_parser('desktop', help='Resumable setup for Claude Desktop. Read CLAUDE.md.')
+    steps = desktop.add_subparsers(dest='desktop_command', required=True)
+    setup = steps.add_parser('setup', help='Sign in, prepare private app import, and start a per-user service.')
+    setup.add_argument('--model', help='Optional exact chatgpt.* model; otherwise use the account list order.')
+    setup.add_argument('--no-login', action='store_true', help='Return awaiting_login without opening a browser.')
+    setup.add_argument('--previous-config', type=Path, help='Privately back up an existing app-exported JSON config.')
+    steps.add_parser('doctor', help='Check service and actual desktop verification; no inference.')
+    undo = steps.add_parser('undo', help='Restore app routing first, then remove only the owned service.')
+    undo.add_argument('--desktop-restored', action='store_true', help='Confirm the app has returned to its previous provider.')
     return cli
 
 
@@ -107,13 +116,25 @@ def main():
     if not 1024 <= args.port <= 65535:
         raise SystemExit('Choose a nonprivileged port from 1024 to 65535.')
     try:
-        if args.command in ('setup', 'login'):
+        if args.command in ('setup', 'login') or (args.command == 'desktop' and args.desktop_command == 'setup'):
             directory = initialize(args.state_dir)
         else:
             if not args.state_dir.exists():
                 raise ValueError('Run claude-chatgpt setup first.')
             directory = ensure_private_directory(args.state_dir)
-        if args.command == 'setup':
+        if args.command == 'desktop':
+            from . import desktop
+            if args.desktop_command == 'setup':
+                result = asyncio.run(desktop.setup(directory, model=args.model, no_login=args.no_login,
+                    previous_config=args.previous_config, preferred_port=args.port))
+            elif args.desktop_command == 'doctor':
+                result = asyncio.run(desktop.doctor(directory))
+            else:
+                result = desktop.undo(directory, args.desktop_restored)
+            print(json.dumps(result, indent=2))
+            if result.get('phase') not in ('verified', 'undone'):
+                raise SystemExit(2)
+        elif args.command == 'setup':
             print('Private state ready. Next: claude-chatgpt login')
         elif args.command == 'login':
             if not 1024 <= args.callback_port <= 65535:
@@ -166,7 +187,7 @@ def main():
     except (ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from None
-    except (OSError, aiohttp.ClientError, asyncio.TimeoutError, KeyError):
+    except (OSError, aiohttp.ClientError, asyncio.TimeoutError, subprocess.TimeoutExpired, KeyError):
         print('Could not complete the command. Check setup, private state permissions and the local service. '
               'Run login again if authorization expired.', file=sys.stderr)
         raise SystemExit(1) from None

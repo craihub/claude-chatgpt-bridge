@@ -26,6 +26,10 @@ backup*/
 .codex/
 .aws/
 state/
+desktop-*.json
+service.json
+service-task.xml
+bootstrap.json
 __pycache__/
 *.py[cod]
 .pytest_cache/
