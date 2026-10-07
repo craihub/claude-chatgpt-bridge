@@ -24,7 +24,9 @@ def main():
             target = source / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((ROOT / name).read_bytes())
-        env = dict(os.environ, SOURCE_DATE_EPOCH='0')
+        # Windows console launchers contain ZIP files, whose timestamps must
+        # be 1980 or later. A fixed second day also tolerates timezone offsets.
+        env = dict(os.environ, SOURCE_DATE_EPOCH='315619200')
         subprocess.run([sys.executable, '-m', 'build', '--outdir', str(output), str(source)],
                        env=env, check=True)
     for archive in output.glob('*.tar.gz'):
